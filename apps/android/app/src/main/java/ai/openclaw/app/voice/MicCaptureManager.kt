@@ -417,12 +417,15 @@ class MicCaptureManager(
       }
       return
     }
+    val next = firstQueuedMessage() ?: run {
+      // Restart recognizer so that mic resumes listening after queue drains on reconnect.
+      if (_micEnabled.value) start()
+      return
+    }
     if (!gatewayConnected) {
       _statusText.value = queuedWaitingStatus()
       return
     }
-
-    val next = firstQueuedMessage() ?: return
     _isSending.value = true
     pendingRunTimeoutJob?.cancel()
     pendingRunTimeoutJob = null
