@@ -100,19 +100,11 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
         working-directory: apps/android
         run: |
-          python3 <<PYEOF
-          import re, os
-          version_name = os.environ["VERSION_NAME"]
-          version_code = os.environ["VERSION_CODE"]
-          gradle = "app/build.gradle.kts"
-          with open(gradle, "r") as f:
-              content = f.read()
-          content = re.sub(r'(versionName\s*=\s*)"\d+\.\d+\.\d+"', rf'\1"{version_name}"', content)
-          content = re.sub(r'(versionCode\s*=\s*)\d+', rf'\1{version_code}', content)
-          with open(gradle, "w") as f:
-              f.write(content)
-          print(f"Patched: versionName={version_name}, versionCode={version_code}")
-          PYEOF
+          sed -i \
+            -e "s/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*\"[^\"]*\"/versionName = \"${VERSION_NAME}\"/" \
+            -e "s/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]\+/versionCode = ${VERSION_CODE}/" \
+            app/build.gradle.kts
+          grep -E "versionName|versionCode" app/build.gradle.kts
 
       - name: Build Play release APK
         working-directory: apps/android
