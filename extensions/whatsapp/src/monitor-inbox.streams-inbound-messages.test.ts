@@ -459,6 +459,43 @@ describe("web monitor inbox", () => {
     }
   });
 
+  it("does not start debounce typing when the precheck suppresses it", async () => {
+    vi.useFakeTimers();
+    try {
+      const shouldStartDebounceTyping = vi.fn(async () => false);
+      const onMessage = vi.fn(async () => undefined);
+      const { listener, sock } = await startInboxMonitor(onMessage as InboxOnMessage, {
+        debounceMs: 50,
+        shouldStartDebounceTyping,
+      });
+
+      sock.ev.emit(
+        "messages.upsert",
+        buildNotifyMessageUpsert({
+          id: nextMessageId("debounce-typing-suppressed"),
+          remoteJid: "999@s.whatsapp.net",
+          text: "hello",
+          timestamp: 1_700_000_000,
+          pushName: "Tester",
+        }),
+      );
+
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(shouldStartDebounceTyping).toHaveBeenCalledTimes(1);
+      expect(sock.sendPresenceUpdate).not.toHaveBeenCalledWith("composing", "999@s.whatsapp.net");
+
+      await vi.advanceTimersByTimeAsync(50);
+      await waitForMessageCalls(onMessage, 1);
+
+      await listener.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retries timed-out sends on the same socket without clearing the socket ref", async () => {
     const onMessage = vi.fn(async () => undefined);
     const socketRef = createSocketRef();

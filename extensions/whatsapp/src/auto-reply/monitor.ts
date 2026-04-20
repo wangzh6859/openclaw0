@@ -1,7 +1,17 @@
 import { resolveAccountEntry } from "openclaw/plugin-sdk/account-core";
 import { resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { formatCliCommand } from "openclaw/plugin-sdk/cli-runtime";
+import {
+  normalizeCommandBody,
+  resolveCommandAuthorization,
+} from "openclaw/plugin-sdk/command-auth";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
+import {
+  loadSessionStore,
+  resolveSendPolicy,
+  resolveSessionStoreEntry,
+  resolveStorePath,
+} from "openclaw/plugin-sdk/config-runtime";
 import { drainPendingDeliveries } from "openclaw/plugin-sdk/infra-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/infra-runtime";
 import { DEFAULT_GROUP_HISTORY_LIMIT } from "openclaw/plugin-sdk/reply-history";
@@ -20,6 +30,11 @@ import {
   WhatsAppConnectionController,
   type ManagedWhatsAppListener,
 } from "../connection-controller.js";
+import { getPrimaryIdentityId, getSenderIdentity } from "../identity.js";
+import {
+  resolveWhatsAppCommandAuthorized,
+  resolveWhatsAppInboundPolicy,
+} from "../inbound-policy.js";
 import { attachWebInboxToSocket } from "../inbound/monitor.js";
 import {
   newConnectionId,
@@ -34,6 +49,7 @@ import { buildMentionConfig } from "./mentions.js";
 import { createWebChannelStatusController } from "./monitor-state.js";
 import { createEchoTracker } from "./monitor/echo.js";
 import { createWebOnMessageHandler } from "./monitor/on-message.js";
+import { resolvePeerId } from "./monitor/peer.js";
 import type { WebInboundMsg, WebMonitorTuning } from "./types.js";
 import { isLikelyWhatsAppCryptoError } from "./util.js";
 
@@ -94,6 +110,90 @@ function isRetryableAuthUnstableError(error: unknown): error is WhatsAppAuthUnst
       "code" in error &&
       (error as { code?: unknown }).code === WHATSAPP_AUTH_UNSTABLE_CODE)
   );
+}
+
+async function shouldStartWhatsAppDebounceTyping(params: {
+  cfg: ReturnType<typeof loadConfig>;
+  msg: WebInboundMsg;
+}): Promise<boolean> {
+  const cfg = params.cfg;
+  const peerId = resolvePeerId(params.msg);
+  const route = resolveAgentRoute({
+    cfg,
+    channel: "whatsapp",
+    accountId: params.msg.accountId,
+    peer: {
+      kind: "direct",
+      id: peerId,
+    },
+  });
+  const storePath = resolveStorePath(cfg.session?.store, {
+    agentId: route.agentId,
+  });
+  const store = loadSessionStore(storePath);
+  const sessionStoreEntry = resolveSessionStoreEntry({
+    store,
+    sessionKey: route.sessionKey,
+  });
+  const sendPolicy = resolveSendPolicy({
+    cfg,
+    entry: sessionStoreEntry.existing,
+    sessionKey: route.sessionKey,
+    channel: sessionStoreEntry.existing?.channel ?? "whatsapp",
+    chatType: sessionStoreEntry.existing?.chatType ?? "direct",
+  });
+  if (sendPolicy === "deny") {
+    return false;
+  }
+
+  const rawBodyTrimmed = params.msg.body.trim();
+  if (!rawBodyTrimmed) {
+    return true;
+  }
+
+  const inboundPolicy = resolveWhatsAppInboundPolicy({
+    cfg,
+    accountId: route.accountId ?? params.msg.accountId,
+    selfE164: params.msg.selfE164 ?? null,
+  });
+  const commandAuthorized = params.msg.body
+    ? await resolveWhatsAppCommandAuthorized({
+        cfg,
+        msg: params.msg,
+        policy: inboundPolicy,
+      })
+    : true;
+  const sender = getSenderIdentity(params.msg);
+  const normalizedCommandBody = normalizeCommandBody(rawBodyTrimmed).trim();
+  const isWholeMessageCommand =
+    normalizedCommandBody === rawBodyTrimmed ||
+    normalizedCommandBody === rawBodyTrimmed.toLowerCase();
+  const isResetOrNewCommand = /^\/(new|reset)(?:\s|$)/.test(normalizedCommandBody);
+  const isRecognizedControlCommand = hasControlCommand(rawBodyTrimmed);
+  if (!isWholeMessageCommand || (!isRecognizedControlCommand && !isResetOrNewCommand)) {
+    return true;
+  }
+
+  const commandAuth = resolveCommandAuthorization({
+    ctx: {
+      AccountId: route.accountId,
+      Body: params.msg.body,
+      RawBody: params.msg.body,
+      CommandBody: params.msg.body,
+      From: params.msg.from,
+      To: params.msg.to,
+      ChatType: "direct",
+      SenderId: getPrimaryIdentityId(sender) ?? sender.e164 ?? params.msg.from,
+      SenderE164: sender.e164 ?? params.msg.senderE164,
+      Provider: "whatsapp",
+      Surface: "whatsapp",
+      OriginatingChannel: "whatsapp",
+      OriginatingTo: params.msg.from,
+    },
+    cfg,
+    commandAuthorized,
+  });
+  return commandAuthorized || commandAuth.isAuthorizedSender;
 }
 
 export async function monitorWebChannel(
@@ -255,6 +355,11 @@ export async function monitorWebChannel(
               sendReadReceipts: account.sendReadReceipts,
               debounceMs: inboundDebounceMs,
               shouldDebounce,
+              shouldStartDebounceTyping: async (msg: WebInboundMsg) =>
+                shouldStartWhatsAppDebounceTyping({
+                  cfg: loadConfig(),
+                  msg,
+                }),
               socketRef: controller.socketRef,
               shouldRetryDisconnect: () => !sigintStop && controller.shouldRetryDisconnect(),
               disconnectRetryPolicy: reconnectPolicy,

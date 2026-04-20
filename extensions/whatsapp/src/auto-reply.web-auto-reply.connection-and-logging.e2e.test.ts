@@ -399,6 +399,85 @@ describe("web auto-reply connection", () => {
     expect(capture.getLastOptions()?.debounceMs).toBe(250);
   });
 
+  it("suppresses debounce typing when send policy denies delivery", async () => {
+    const capture = createWebListenerFactoryCapture();
+
+    setLoadConfigMock({
+      session: {
+        sendPolicy: {
+          default: "deny",
+        },
+      },
+      channels: {
+        whatsapp: {
+          debounceMs: 250,
+          allowFrom: ["*"],
+        },
+      },
+    } as OpenClawConfig);
+
+    await monitorWebChannel(false, capture.listenerFactory as never, false, async () => ({
+      text: "ok",
+    }));
+
+    const shouldStartDebounceTyping = capture.getLastOptions()?.shouldStartDebounceTyping;
+    expect(shouldStartDebounceTyping).toBeTypeOf("function");
+    await expect(
+      shouldStartDebounceTyping?.({
+        body: "hello",
+        from: "+15550001111",
+        conversationId: "+15550001111",
+        to: "+15550009999",
+        accountId: "default",
+        chatType: "direct",
+        chatId: "direct:+15550001111",
+        id: "m1",
+        sendComposing: vi.fn(),
+        reply: vi.fn(),
+        sendMedia: vi.fn(),
+      } as never),
+    ).resolves.toBe(false);
+
+    resetLoadConfigMock();
+  });
+
+  it("suppresses debounce typing for silent unauthorized whole-message commands", async () => {
+    const capture = createWebListenerFactoryCapture();
+
+    setLoadConfigMock({
+      channels: {
+        whatsapp: {
+          debounceMs: 250,
+          dmPolicy: "open",
+        },
+      },
+    } as OpenClawConfig);
+
+    await monitorWebChannel(false, capture.listenerFactory as never, false, async () => ({
+      text: "ok",
+    }));
+
+    const shouldStartDebounceTyping = capture.getLastOptions()?.shouldStartDebounceTyping;
+    expect(shouldStartDebounceTyping).toBeTypeOf("function");
+    await expect(
+      shouldStartDebounceTyping?.({
+        body: "/reset",
+        from: "+15550001111",
+        conversationId: "+15550001111",
+        to: "+15550009999",
+        accountId: "default",
+        chatType: "direct",
+        chatId: "direct:+15550001111",
+        id: "m1",
+        sendComposing: vi.fn(),
+        reply: vi.fn(),
+        sendMedia: vi.fn(),
+      } as never),
+    ).resolves.toBe(false);
+
+    resetLoadConfigMock();
+  });
+
   it("processes inbound messages without batching and preserves timestamps", async () => {
     await withEnvAsync({ TZ: "Europe/Vienna" }, async () => {
       const originalMax = process.getMaxListeners();

@@ -73,6 +73,8 @@ export type MonitorWebInboxOptions = {
   debounceMs?: number;
   /** Optional debounce gating predicate. */
   shouldDebounce?: (msg: WebInboundMessage) => boolean;
+  /** Optional guard for starting debounce-window typing before normal reply handling. */
+  shouldStartDebounceTyping?: (msg: WebInboundMessage) => boolean | Promise<boolean>;
   /** Optional shared socket reference so reply closures can follow reconnects. */
   socketRef?: { current: WASocket | null };
   /** Whether send retries should wait for a reconnect. */
@@ -648,7 +650,16 @@ export async function attachWebInboxToSocket(
       inboundMessage.chatType === "direct" &&
       !inbound.access.isSelfChat
     ) {
-      if (debounceKey) {
+      let shouldStartDebounceTyping = true;
+      if (options.shouldStartDebounceTyping) {
+        try {
+          shouldStartDebounceTyping = await options.shouldStartDebounceTyping(inboundMessage);
+        } catch (err) {
+          shouldStartDebounceTyping = false;
+          logWhatsAppVerbose(options.verbose, `Debounce typing precheck failed: ${String(err)}`);
+        }
+      }
+      if (debounceKey && shouldStartDebounceTyping) {
         // Keep a visible typing indicator alive while DMs are intentionally buffered.
         startPendingDebounceTyping(debounceKey, sendComposing);
       }
