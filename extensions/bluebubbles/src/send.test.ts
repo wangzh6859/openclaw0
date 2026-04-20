@@ -1391,15 +1391,17 @@ describe("send", () => {
       // Capture the `timeoutMs` that the SSRF guard receives on each call.
       // Index 0 is the `chat/query` preflight; index 1 is the actual
       // `/api/v1/message/text` POST — that's the one we care about.
-      function installTimeoutCapture(): number[] {
-        const timeouts: number[] = [];
+      function installTimeoutCapture(): (number | undefined)[] {
+        const timeouts: (number | undefined)[] = [];
         _setFetchGuardForTesting(async (guardParams) => {
           timeouts.push(guardParams.timeoutMs);
           const raw = await globalThis.fetch(guardParams.url, guardParams.init);
           // Mirrors `createBlueBubblesFetchGuardPassthroughInstaller` so both
           // `.json()`-only chat-query mocks and `.text()`-only send mocks work.
           let body: ArrayBuffer;
-          if (typeof (raw as { arrayBuffer?: () => Promise<ArrayBuffer> }).arrayBuffer === "function") {
+          if (
+            typeof (raw as { arrayBuffer?: () => Promise<ArrayBuffer> }).arrayBuffer === "function"
+          ) {
             body = await (raw as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
           } else {
             const text =
