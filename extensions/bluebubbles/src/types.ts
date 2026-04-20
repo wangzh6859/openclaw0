@@ -63,10 +63,16 @@ export type BlueBubblesAccountConfig = {
   /** Outbound text chunk size (chars). Default: 4000. */
   textChunkLimit?: number;
   /**
-   * Per-request timeout (ms) for outbound text/reaction/edit sends via the
-   * BlueBubbles API. Probes, catchup, and history keep the shorter default.
+   * Per-request timeout (ms) for outbound text sends via
+   * `/api/v1/message/text` and the `createNewChatWithMessage` send path.
+   * Probes, chat lookups, catchup, and history keep the shorter default.
    * Raise this on macOS 26 setups where Private API iMessage sends can stall
-   * for 60+s. Default: 30000. (#67486)
+   * for 60+s. Default: 30000.
+   *
+   * Reaction and edit paths (`sendBlueBubblesReaction`,
+   * `editBlueBubblesMessage`, `unsendBlueBubblesMessage`) still honor the
+   * shorter client default unless the caller passes `opts.timeoutMs` — covering
+   * those uniformly from config is tracked as a follow-up. (#67486)
    */
   sendTimeoutMs?: number;
   /** Chunking mode: "newline" (default) splits on every newline; "length" splits by size. */

@@ -1433,7 +1433,7 @@ describe("send", () => {
             password: "test",
           });
           expect(result.messageId).toBe("msg-default-timeout");
-          // chat/query preflight keeps the short default; the send ride-through is 30s.
+          // chat/query preflight must stay at the short default; only the send POST rises.
           expect(timeouts[0]).toBe(10_000);
           expect(timeouts[1]).toBe(30_000);
         } finally {
@@ -1459,6 +1459,8 @@ describe("send", () => {
             },
           });
           expect(result.messageId).toBe("msg-config-timeout");
+          // chat/query preflight must stay at the short default; only the send POST rises.
+          expect(timeouts[0]).toBe(10_000);
           expect(timeouts[1]).toBe(45_000);
         } finally {
           _setFetchGuardForTesting(null);
@@ -1484,6 +1486,10 @@ describe("send", () => {
             timeoutMs: 90_000,
           });
           expect(result.messageId).toBe("msg-explicit-timeout");
+          // Explicit opts.timeoutMs is forwarded to every call site, including
+          // the chat/query preflight — the only override that can push that
+          // preflight above the 10s default.
+          expect(timeouts[0]).toBe(90_000);
           expect(timeouts[1]).toBe(90_000);
         } finally {
           _setFetchGuardForTesting(null);
