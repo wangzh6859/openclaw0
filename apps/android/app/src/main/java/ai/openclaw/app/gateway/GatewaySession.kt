@@ -330,7 +330,7 @@ class GatewaySession(
       val builder = OkHttpClient.Builder()
         .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(0, java.util.concurrent.TimeUnit.SECONDS)
-        .pingInterval(30, java.util.concurrent.TimeUnit.SECONDS)
+        .pingInterval(45, java.util.concurrent.TimeUnit.SECONDS)
       val tlsConfig = buildGatewayTlsConfig(tls) { fingerprint ->
         onTlsFingerprint?.invoke(tls?.stableId ?: endpoint.stableId, fingerprint)
       }
@@ -785,7 +785,7 @@ class GatewaySession(
           reconnectPausedForAuthFailure = true
           continue
         }
-        val sleepMs = minOf(8_000L, (350.0 * Math.pow(1.7, attempt.toDouble())).toLong())
+        val sleepMs = minOf(30_000L, (350.0 * Math.pow(1.7, attempt.toDouble())).toLong())
         delay(sleepMs)
       }
     }
