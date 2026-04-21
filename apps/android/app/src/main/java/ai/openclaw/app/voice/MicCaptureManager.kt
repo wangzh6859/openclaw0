@@ -51,12 +51,12 @@ class MicCaptureManager(
 ) {
   companion object {
     private const val tag = "MicCapture"
-    private const val speechMinSessionMs = 30_000L
+    private const val speechMinSessionMs = 5_000L
     private const val speechCompleteSilenceMs = 1_500L
     private const val speechPossibleSilenceMs = 900L
     private const val transcriptIdleFlushMs = 1_600L
     private const val maxConversationEntries = 40
-    private const val pendingRunTimeoutMs = 45_000L
+    private const val pendingRunTimeoutMs = 60_000L
   }
 
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -340,6 +340,7 @@ class MicCaptureManager(
       Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault())
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
         putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, speechMinSessionMs)
