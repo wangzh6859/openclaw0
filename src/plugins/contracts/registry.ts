@@ -1,3 +1,4 @@
+import { normalizeProviderId } from "../../agents/provider-id.js";
 import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
 import { loadBundledCapabilityRuntimeRegistry } from "../bundled-capability-runtime.js";
 import {
@@ -18,7 +19,10 @@ import type {
   WebSearchProviderPlugin,
 } from "../types.js";
 import { resolveBundledExplicitWebSearchProvidersFromPublicArtifacts } from "../web-provider-public-artifacts.explicit.js";
-import { BUNDLED_PLUGIN_CONTRACT_SNAPSHOTS } from "./inventory/bundled-capability-metadata.js";
+import {
+  BUNDLED_PLUGIN_CONTRACT_SNAPSHOTS,
+  type BundledPluginContractSnapshot,
+} from "./inventory/bundled-capability-metadata.js";
 import { uniqueStrings } from "./shared.js";
 import {
   loadVitestImageGenerationProviderContractRegistry,
@@ -53,21 +57,7 @@ type ImageGenerationProviderContractEntry = CapabilityContractEntry<ImageGenerat
 type VideoGenerationProviderContractEntry = CapabilityContractEntry<VideoGenerationProviderPlugin>;
 type MusicGenerationProviderContractEntry = CapabilityContractEntry<MusicGenerationProviderPlugin>;
 
-type PluginRegistrationContractEntry = {
-  pluginId: string;
-  cliBackendIds: string[];
-  providerIds: string[];
-  speechProviderIds: string[];
-  realtimeTranscriptionProviderIds: string[];
-  realtimeVoiceProviderIds: string[];
-  mediaUnderstandingProviderIds: string[];
-  imageGenerationProviderIds: string[];
-  videoGenerationProviderIds: string[];
-  musicGenerationProviderIds: string[];
-  webFetchProviderIds: string[];
-  webSearchProviderIds: string[];
-  toolNames: string[];
-};
+type PluginRegistrationContractEntry = BundledPluginContractSnapshot;
 
 type ManifestContractKey =
   | "speechProviders"
@@ -731,6 +721,30 @@ export function resolveProviderContractPluginIdsForProvider(
   providerId: string,
 ): string[] | undefined {
   const pluginIds = resolveBundledProviderContractPluginIdsByProviderId().get(providerId) ?? [];
+  return pluginIds.length > 0 ? pluginIds : undefined;
+}
+
+export function resolveProviderContractPluginIdsForProviderAlias(
+  providerId: string,
+): string[] | undefined {
+  const normalizedProvider = normalizeProviderId(providerId);
+  if (!normalizedProvider) {
+    return undefined;
+  }
+  const pluginIds = uniqueStrings(
+    loadProviderContractEntriesForPluginIds(resolveBundledProviderContractPluginIds())
+      .filter((entry) => {
+        const providerIds = [
+          entry.provider.id,
+          ...(entry.provider.aliases ?? []),
+          ...(entry.provider.hookAliases ?? []),
+        ];
+        return providerIds.some(
+          (candidate) => normalizeProviderId(candidate) === normalizedProvider,
+        );
+      })
+      .map((entry) => entry.pluginId),
+  ).toSorted((left, right) => left.localeCompare(right));
   return pluginIds.length > 0 ? pluginIds : undefined;
 }
 
